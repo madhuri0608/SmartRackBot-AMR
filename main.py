@@ -36,3 +36,16 @@ if path:
     print_grid_path(grid, path)
 else:
     print("No Path Found.")
+
+from sensors.lidar_sim import LidarSim
+
+# Simulate Lidar at robot start position
+lidar = LidarSim(grid, max_range=6)
+distances = lidar.scan(start)
+
+directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+
+print("\nLIDAR SCAN from Start Position ({}):".format(start))
+for d, dist in zip(directions, distances):
+    print(f"{d}: {dist} units")
+
