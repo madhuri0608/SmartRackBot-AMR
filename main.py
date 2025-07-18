@@ -67,3 +67,48 @@ for step in range(30):
     velocity_log.append(actual_velocity)
     print(f"Step {step:02d}: Velocity = {actual_velocity:.3f} m/s")
 
+import time
+
+print("\n[SIMULATED ROBOT MOVEMENT ALONG A* PATH]")
+
+# Simulate the robot moving toward each waypoint in the path
+pid = PIDController(kp=2.0, ki=0.3, kd=0.1, dt=0.1)
+target_velocity = 1.0  # m/s
+actual_velocity = 0.0
+
+current_pos = list(start)
+path_index = 0
+
+movement_log = []
+
+while path_index < len(path):
+    next_pos = path[path_index]
+
+    # Simulate distance to next point (grid step = 1 unit)
+    dist_to_next = ((next_pos[0] - current_pos[0])**2 + (next_pos[1] - current_pos[1])**2)**0.5
+
+    if dist_to_next < 0.1:
+        # Reached this point, go to next
+        path_index += 1
+        continue
+
+    # Compute velocity control to approach the next point
+    control_signal = pid.compute(target_velocity, actual_velocity)
+    actual_velocity += control_signal * 0.1  # simplistic motor response
+
+    # Normalize direction vector
+    dx = next_pos[0] - current_pos[0]
+    dy = next_pos[1] - current_pos[1]
+    mag = (dx**2 + dy**2)**0.5
+    dx /= mag
+    dy /= mag
+
+    # Update position
+    current_pos[0] += dx * actual_velocity * 0.1  # Δt = 0.1
+    current_pos[1] += dy * actual_velocity * 0.1
+
+    movement_log.append(tuple(current_pos))
+    print(f"→ Pos: ({current_pos[0]:.2f}, {current_pos[1]:.2f}) | Vel: {actual_velocity:.2f} m/s")
+
+    time.sleep(0.05)  # Optional: slow down for readability
+
