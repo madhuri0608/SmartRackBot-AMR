@@ -81,7 +81,7 @@ while path_index < len(path):
     robot_pos[1] += dy * actual_velocity * 0.1
 
     # Update robot dot
-    robot_dot.set_data(robot_pos[1], robot_pos[0])
+    robot_dot.set_data([robot_pos[1]], [robot_pos[0]])
     fig.canvas.draw()
     fig.canvas.flush_events()
     time.sleep(0.05)
