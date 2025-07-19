@@ -38,6 +38,7 @@ ax.set_aspect('equal')
 ax.invert_yaxis()
 ax.set_title("SmartRackBot Task Simulation")
 
+# Draw grid + racks + drop zones
 for i in range(len(grid)):
     for j in range(len(grid[0])):
         if (i, j) in rack_locations:
@@ -55,7 +56,7 @@ plt.legend()
 planner = AStarPlanner(grid)
 task_queue = [(rack, drop_locations[i % len(drop_locations)]) for i, rack in enumerate(rack_locations)]
 
-# ------------- LiDAR Detection ------------- #
+# ------------- LiDAR Detection Logic ------------- #
 def is_obstacle_detected(pos, obstacles, detection_range=0.5):
     for obs in obstacles:
         dist = math.hypot(obs[0] - pos[0], obs[1] - pos[1])
@@ -75,21 +76,25 @@ def move_obstacles(obstacles, grid):
             new_obs.append(obs)
     return new_obs
 
-# ------------- Tag Detection ------------- #
-def detect_simulated_tag(robot_pos, rack_pos, threshold=1.5):
-    dx = robot_pos[0] - rack_pos[0]
-    dy = robot_pos[1] - rack_pos[1]
-    distance = (dx**2 + dy**2) ** 0.5
-    print(f"[DEBUG] Distance to rack: {distance:.2f}")
-    return distance <= threshold
+# ---------------- FSM States ---------------- #
+IDLE = 0
+NAVIGATING = 1
+PICKING = 2
+DROPPING = 3
+state = IDLE
+current_task = 0
 
-# ------------- Main FSM Task Loop ------------- #
-for pickup, drop in task_queue:
-    for target in [pickup, drop]:
-        goal_type = "RACK" if target == pickup else "DROP"
-        print(f"[TASK] Moving to {goal_type} at {target}")
-        ax.set_title(f"Heading to {goal_type} at {target}")
-        path = planner.plan((round(robot_pos[0]), round(robot_pos[1])), target)
+# ---------------- FSM Task Loop ---------------- #
+while current_task < len(task_queue):
+    pickup, drop = task_queue[current_task]
+
+    if state == IDLE:
+        print(f"[FSM] Starting task {current_task+1}: Going to pickup {pickup}")
+        state = NAVIGATING
+        goal = pickup
+
+    elif state == NAVIGATING:
+        path = planner.plan((round(robot_pos[0]), round(robot_pos[1])), goal)
         path_index = 0
 
         while path_index < len(path):
@@ -102,8 +107,7 @@ for pickup, drop in task_queue:
                 continue
 
             if is_obstacle_detected(robot_pos, dynamic_obstacles):
-                print("[⚠️] Obstacle detected! Waiting...")
-                ax.set_title("Waiting for obstacle to move...")
+                ax.set_title("[FSM] Obstacle in path...")
                 time.sleep(0.5)
                 dynamic_obstacles = move_obstacles(dynamic_obstacles, grid)
                 continue
@@ -115,7 +119,6 @@ for pickup, drop in task_queue:
             robot_pos[0] += dx * actual_velocity * 0.1
             robot_pos[1] += dy * actual_velocity * 0.1
 
-            # Plot updates
             robot_dot.set_data([robot_pos[1]], [robot_pos[0]])
             obs_x = [o[1] for o in dynamic_obstacles]
             obs_y = [o[0] for o in dynamic_obstacles]
@@ -125,24 +128,20 @@ for pickup, drop in task_queue:
             fig.canvas.flush_events()
             time.sleep(0.05)
 
-        # Snap to grid before detection
-        robot_pos[0], robot_pos[1] = int(round(robot_pos[0])), int(round(robot_pos[1]))
+        state = PICKING if not carrying else DROPPING
 
-        if goal_type == "RACK":
-            if tuple(robot_pos) == pickup:
-                print(f"[📸] Tag Detected at Rack {pickup} - Confirmed Placement")
-            elif detect_simulated_tag(robot_pos, pickup):
-                print(f"[📸] Tag Detected near Rack {pickup} - Close Enough")
-            else:
-                print(f"[❌] No tag detected at {pickup} - Retrying...")
-                time.sleep(0.5)
-            print(f"[✅ ACTION] Picked item at {target}")
-            carrying = True
-        else:
-            print(f"[✅ ACTION] Dropped item at {target}")
-            carrying = False
-        time.sleep(0.5)
+    elif state == PICKING:
+        print(f"[FSM] Picked up item at {pickup}")
+        carrying = True
+        goal = drop
+        state = NAVIGATING
+
+    elif state == DROPPING:
+        print(f"[FSM] Dropped item at {drop}")
+        carrying = False
+        current_task += 1
+        state = IDLE
 
 plt.ioff()
-plt.title("All Tasks Completed!")
+plt.title("All Tasks Completed via FSM!")
 plt.show()
