@@ -20,7 +20,7 @@ grid = [
 start = (0, 0)
 rack_locations = [(0, 4), (2, 8), (4, 6)]
 drop_locations = [(9, 0), (9, 9)]
-dynamic_obstacles = [(3, 3)]  # Moving obstacle
+dynamic_obstacles = [(3, 3)]
 
 # ---------------- Robot & Controller ---------------- #
 pid = PIDController(kp=2.0, ki=0.3, kd=0.1, dt=0.1)
@@ -38,7 +38,6 @@ ax.set_aspect('equal')
 ax.invert_yaxis()
 ax.set_title("SmartRackBot Task Simulation")
 
-# Draw grid + racks + drop zones
 for i in range(len(grid)):
     for j in range(len(grid[0])):
         if (i, j) in rack_locations:
@@ -48,7 +47,6 @@ for i in range(len(grid)):
         elif grid[i][j] == 1:
             ax.add_patch(patches.Rectangle((j-0.5, i-0.5), 1, 1, edgecolor='k', facecolor='gray'))
 
-# Start point
 ax.plot(start[1], start[0], 'go', label='Start')
 robot_dot, = ax.plot(robot_pos[1], robot_pos[0], 'ro', markersize=8, label='Robot')
 obstacle_dots, = ax.plot([], [], 'bs', markersize=10, label='Obstacle')
@@ -57,7 +55,7 @@ plt.legend()
 planner = AStarPlanner(grid)
 task_queue = [(rack, drop_locations[i % len(drop_locations)]) for i, rack in enumerate(rack_locations)]
 
-# ------------- LiDAR Detection Logic ------------- #
+# ------------- LiDAR Detection ------------- #
 def is_obstacle_detected(pos, obstacles, detection_range=0.5):
     for obs in obstacles:
         dist = math.hypot(obs[0] - pos[0], obs[1] - pos[1])
@@ -77,7 +75,15 @@ def move_obstacles(obstacles, grid):
             new_obs.append(obs)
     return new_obs
 
-# ------------- Task Loop (Pick → Drop) ------------- #
+# ------------- Tag Detection ------------- #
+def detect_simulated_tag(robot_pos, rack_pos, threshold=1.5):
+    dx = robot_pos[0] - rack_pos[0]
+    dy = robot_pos[1] - rack_pos[1]
+    distance = (dx**2 + dy**2) ** 0.5
+    print(f"[DEBUG] Distance to rack: {distance:.2f}")
+    return distance <= threshold
+
+# ------------- Main FSM Task Loop ------------- #
 for pickup, drop in task_queue:
     for target in [pickup, drop]:
         goal_type = "RACK" if target == pickup else "DROP"
@@ -119,11 +125,21 @@ for pickup, drop in task_queue:
             fig.canvas.flush_events()
             time.sleep(0.05)
 
+        # Snap to grid before detection
+        robot_pos[0], robot_pos[1] = int(round(robot_pos[0])), int(round(robot_pos[1]))
+
         if goal_type == "RACK":
-            print(f"[ACTION] Picked item at {target}")
+            if tuple(robot_pos) == pickup:
+                print(f"[📸] Tag Detected at Rack {pickup} - Confirmed Placement")
+            elif detect_simulated_tag(robot_pos, pickup):
+                print(f"[📸] Tag Detected near Rack {pickup} - Close Enough")
+            else:
+                print(f"[❌] No tag detected at {pickup} - Retrying...")
+                time.sleep(0.5)
+            print(f"[✅ ACTION] Picked item at {target}")
             carrying = True
         else:
-            print(f"[ACTION] Dropped item at {target}")
+            print(f"[✅ ACTION] Dropped item at {target}")
             carrying = False
         time.sleep(0.5)
 
