@@ -7,36 +7,54 @@ class AStarPlanner:
         self.cols = len(grid[0])
 
     def heuristic(self, a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])  # Manhattan distance
+        # Manhattan distance
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
     def get_neighbors(self, node):
-        directions = [(0,1),(1,0),(0,-1),(-1,0)]
         neighbors = []
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # 4-directional movement
         for dx, dy in directions:
             nx, ny = node[0] + dx, node[1] + dy
             if 0 <= nx < self.rows and 0 <= ny < self.cols and self.grid[nx][ny] == 0:
-                neighbors.append((nx, ny))
+                neighbors.append((nx, ny))  # ✅ return as tuple
         return neighbors
 
     def plan(self, start, goal):
-        open_list = []
-        heapq.heappush(open_list, (0 + self.heuristic(start, goal), 0, start, [start]))
+        start = tuple(start)  # ✅ ensure it's a tuple
+        goal = tuple(goal)
 
+        open_set = []
+        heapq.heappush(open_set, (0, start))
+        came_from = {}
+        g_score = {start: 0}
+        f_score = {start: self.heuristic(start, goal)}
         visited = set()
-        while open_list:
-            _, cost, current, path = heapq.heappop(open_list)
-            if current in visited:
-                continue
+
+        while open_set:
+            _, current = heapq.heappop(open_set)
+
             if current == goal:
-                return path
+                return self.reconstruct_path(came_from, current)
+
             visited.add(current)
+
             for neighbor in self.get_neighbors(current):
-                if neighbor not in visited:
-                    new_cost = cost + 1
-                    heapq.heappush(open_list, (
-                        new_cost + self.heuristic(neighbor, goal),
-                        new_cost,
-                        neighbor,
-                        path + [neighbor]
-                    ))
-        return []
+                if neighbor in visited:
+                    continue
+                tentative_g = g_score[current] + 1
+
+                if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g
+                    f_score[neighbor] = tentative_g + self.heuristic(neighbor, goal)
+                    heapq.heappush(open_set, (f_score[neighbor], neighbor))
+
+        return []  # No path found
+
+    def reconstruct_path(self, came_from, current):
+        path = [current]
+        while current in came_from:
+            current = came_from[current]
+            path.append(current)
+        path.reverse()
+        return path
