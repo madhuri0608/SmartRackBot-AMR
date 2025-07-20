@@ -48,6 +48,7 @@ for i in range(len(grid)):
         elif grid[i][j] == 1:
             ax.add_patch(patches.Rectangle((j-0.5, i-0.5), 1, 1, edgecolor='k', facecolor='gray'))
 
+# Start point
 ax.plot(start[1], start[0], 'go', label='Start')
 robot_dot, = ax.plot(robot_pos[1], robot_pos[0], 'ro', markersize=8, label='Robot')
 obstacle_dots, = ax.plot([], [], 'bs', markersize=10, label='Obstacle')
@@ -76,25 +77,28 @@ def move_obstacles(obstacles, grid):
             new_obs.append(obs)
     return new_obs
 
-# ---------------- FSM States ---------------- #
-IDLE = 0
-NAVIGATING = 1
-PICKING = 2
-DROPPING = 3
-state = IDLE
-current_task = 0
+# ------------- Simulated Tag Detection ------------- #
+def detect_simulated_tag_with_confidence(robot_pos, rack_pos, threshold=2.0):
+    dx = robot_pos[0] - rack_pos[0]
+    dy = robot_pos[1] - rack_pos[1]
+    distance = math.hypot(dx, dy)
+    if distance <= threshold:
+        confidence = max(0, 1.0 - distance / threshold)
+        confidence_pct = confidence * 100 + random.uniform(-5, 5)
+        print(f"[📸] Tag Detected at Rack {rack_pos} — Confidence: {confidence_pct:.1f}%")
+        return confidence_pct >= 75
+    else:
+        print(f"[❌] Tag not detected at Rack {rack_pos} — Too far (Distance: {distance:.2f})")
+        return False
 
-# ---------------- FSM Task Loop ---------------- #
-while current_task < len(task_queue):
-    pickup, drop = task_queue[current_task]
-
-    if state == IDLE:
-        print(f"[FSM] Starting task {current_task+1}: Going to pickup {pickup}")
-        state = NAVIGATING
-        goal = pickup
-
-    elif state == NAVIGATING:
-        path = planner.plan((round(robot_pos[0]), round(robot_pos[1])), goal)
+# ------------- FSM Task Loop (Pick → Drop) ------------- #
+for idx, (pickup, drop) in enumerate(task_queue):
+    print(f"[🧠 FSM] Task {idx+1}: Go to RACK {pickup} then DROP {drop}")
+    for target in [pickup, drop]:
+        goal_type = "RACK" if target == pickup else "DROP"
+        print(f"[TASK] Moving to {goal_type} at {target}")
+        ax.set_title(f"Heading to {goal_type} at {target}")
+        path = planner.plan((round(robot_pos[0]), round(robot_pos[1])), target)
         path_index = 0
 
         while path_index < len(path):
@@ -103,11 +107,14 @@ while current_task < len(task_queue):
             dy = next_pos[1] - robot_pos[1]
             dist = math.hypot(dx, dy)
             if dist < 0.1:
+                if path_index == len(path) - 1 and goal_type == "RACK":
+                    print(f"[🎯] Arrived near Rack at {target}")
                 path_index += 1
                 continue
 
             if is_obstacle_detected(robot_pos, dynamic_obstacles):
-                ax.set_title("[FSM] Obstacle in path...")
+                print("[⚠️] Obstacle detected! Waiting...")
+                ax.set_title("Waiting for obstacle to move...")
                 time.sleep(0.5)
                 dynamic_obstacles = move_obstacles(dynamic_obstacles, grid)
                 continue
@@ -128,20 +135,20 @@ while current_task < len(task_queue):
             fig.canvas.flush_events()
             time.sleep(0.05)
 
-        state = PICKING if not carrying else DROPPING
-
-    elif state == PICKING:
-        print(f"[FSM] Picked up item at {pickup}")
-        carrying = True
-        goal = drop
-        state = NAVIGATING
-
-    elif state == DROPPING:
-        print(f"[FSM] Dropped item at {drop}")
-        carrying = False
-        current_task += 1
-        state = IDLE
+        # After reaching the target
+        if goal_type == "RACK":
+            time.sleep(0.3)  # simulate pause before scanning
+            success = detect_simulated_tag_with_confidence(robot_pos, pickup)
+            if success:
+                print(f"[✅ ACTION] Picked item at {target}")
+                carrying = True
+            else:
+                print(f"[❌] Failed to detect tag at {pickup} — Skipping pickup!")
+        else:
+            print(f"[✅ ACTION] Dropped item at {target}")
+            carrying = False
+        time.sleep(0.5)
 
 plt.ioff()
-plt.title("All Tasks Completed via FSM!")
+plt.title("All Tasks Completed!")
 plt.show()
